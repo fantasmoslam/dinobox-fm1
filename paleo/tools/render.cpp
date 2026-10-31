@@ -1,8 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* paleo-render: play a score through PALEO offline and write a 32-bit float stereo WAV.
    paleo-render SCORE OUT.wav [--lead horn|fiddle|choir|blend] [--ostinato spiccato|mouthbow|both]
-                [--threads N] [--seconds S] [--stem FILE] (FILE: float32, 4 interleaved channels: dry L R, hall send L R) */
+                [--threads N] [--seconds S] [--stem FILE] [--creatures DIR] (FILE: float32, 4 interleaved channels: dry L R, hall send L R) */
+#define MINIAUDIO_IMPLEMENTATION
+#define MA_NO_DEVICE_IO
+#define MA_NO_ENCODING
+#define MA_NO_GENERATION
+#include "../third_party/miniaudio.h"
 #include "../engine/paleo.h"
+#include "creatures.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -29,7 +35,7 @@ int main(int argc, char** argv) {
   _mm_setcsr(_mm_getcsr() | 0x8040);
 #endif
   if (argc < 3) { fprintf(stderr, "usage: paleo-render SCORE OUT.wav [options]\n"); return 2; }
-  paleo::Options o; double secs = 0; const char* stem = nullptr;
+  paleo::Options o; double secs = 0; const char* stem = nullptr; std::string cdir;
   for (int i = 3; i + 1 < argc; i += 2) {
     std::string k = argv[i], v = argv[i + 1];
     if (k == "--lead") o.lead = v == "horn" ? paleo::Lead::horn : v == "fiddle" ? paleo::Lead::fiddle : v == "choir" ? paleo::Lead::choir : paleo::Lead::blend;
@@ -37,9 +43,11 @@ int main(int argc, char** argv) {
     else if (k == "--threads") o.threads = atoi(v.c_str());
     else if (k == "--seconds") secs = atof(v.c_str());
     else if (k == "--stem") stem = argv[i + 1];
+    else if (k == "--creatures") cdir = v;
   }
   auto t0 = std::chrono::steady_clock::now();
-  paleo::Engine e(o); auto score = paleo::read_score(argv[1]); e.load(score);
+  paleo::Engine e(o); int nc = paleo_load_creatures(e, cdir, argv[1]); fprintf(stderr, "creature library: %d calls\n", nc);
+  auto score = paleo::read_score(argv[1]); e.load(score);
   double prep = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   if (stem) {
     FILE* f = fopen(stem, "rb"); if (!f) { perror(stem); return 1; }

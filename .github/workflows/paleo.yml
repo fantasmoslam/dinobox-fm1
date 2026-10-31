@@ -12,10 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: sh paleo/build.sh
-      - name: Render STAMPEDE offline (instruments and effects; the creatures come in Step 2)
+      - name: Render STAMPEDE offline (instruments, effects and the creature library)
         run: |
           sudo apt-get install -y -qq ffmpeg >/dev/null
-          build/paleo/paleo-render paleo/scores/stampede.txt build/paleo/stampede.wav --seconds 156 --threads 4
+          build/paleo/paleo-render paleo/scores/stampede.txt build/paleo/stampede.wav --seconds 156 --threads 4 --lead fiddle 2>&1 | tee build/log.txt
+          grep -q "creature library: 126 calls" build/log.txt
           I=$(ffmpeg -i build/paleo/stampede.wav -af ebur128 -f null - 2>&1 | grep -E '^\s+I:' | tail -1 | awk '{print $2}')
           ffmpeg -y -loglevel error -i build/paleo/stampede.wav -af "volume=$(python3 -c "print(-13.5-($I))")dB,alimiter=limit=0.93:attack=2:release=60:level=false,afade=t=out:st=153:d=3" -b:a 224k build/paleo/paleo-stampede.mp3
       - name: Live player smoke test (silent output)
@@ -40,8 +41,16 @@ jobs:
           copy paleo\scores\stampede.txt build\paleo\
           copy paleo\scores\kit-demo.txt build\paleo\
           copy paleo\scores\kit-demo2.txt build\paleo\
-      - name: Smoke test
-        run: build\paleo\paleo-render.exe paleo\scores\stampede.txt build\paleo\test.wav --seconds 20
+          copy paleo\scores\creature-demo.txt build\paleo\
+          mkdir build\paleo\creatures
+          copy paleo\creatures\lib\* build\paleo\creatures\
+          copy paleo\creatures\CREDITS.md build\paleo\creatures\
+      - name: Smoke test (the creature library must load)
+        shell: cmd
+        run: |
+          build\paleo\paleo-render.exe build\paleo\stampede.txt build\paleo\test.wav --seconds 20 > build\log.txt 2>&1
+          type build\log.txt
+          findstr /C:"creature library: 126 calls" build\log.txt || exit /b 1
       - uses: actions/upload-artifact@v4
         with:
           name: paleo-windows
@@ -51,4 +60,6 @@ jobs:
             build/paleo/stampede.txt
             build/paleo/kit-demo.txt
             build/paleo/kit-demo2.txt
+            build/paleo/creature-demo.txt
+            build/paleo/creatures/
           retention-days: 30

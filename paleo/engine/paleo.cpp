@@ -12,6 +12,8 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <map>
+#include <random>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -73,6 +75,7 @@ const PartDef kParts[] = {
   {"guitar",   make_guitar,   Ctl::held,   24, 1, 0, 3.0f, {0,     60,   9000, 0,   0,    0,    0,   .317f,     10,   .35f,  0,   0,   0,    .3f,.25f, .2f, 1}},
 };
 const int kNumParts = int(sizeof kParts / sizeof kParts[0]);
+const float kCreatureK = 1.21192f;   /* mix4.py's level for the creature stem: -11.5 dB active over its RMS */
 const float kDuckRef = 1.07775f, kGlueThr = 1.36736f, kOutGain = 1 / 2.36579f;
 /* Reverb returns, scaled so white noise in gives equal power out, like the song's energy-normalised IRs. */
 const float kHallReturn = .45f, kRoomReturn = .35f, kTailIn = .7f;
@@ -162,6 +165,55 @@ struct Engine::Impl {
   std::vector<Shot> shots;            /* risers and sub drops, prepared at load */
   std::vector<float> sdL, sdR, ssL, ssR;
   double len = 0, load = 0;
+
+  /* ---- creatures: SAURUS variants from the creature library, played as samples. Each call picks a variant
+     (never the last one played for that kind), shifts its pitch a little, moves its throat with a peaking EQ,
+     and places it: distance darkens it, turns it down and sends more of it to the hall; pan sets the side.
+     Levels follow the STAMPEDE creature mix: variants peak at -6 dBFS, the event's velocity is the gain the
+     song used, and the bus is scaled by kCreatureK like the v5 creature stem. */
+  std::map<std::string, std::vector<std::vector<float>>> lib;
+  struct CEvent { long long start; const std::vector<float>* s; double rate; float gain, dist, pan, send, throat_f, throat_g; bool wide; };
+  struct CVoice { CEvent e; double pos = 0; Biquad th, lp1, lp2; float gl = 0, gr = 0; };
+  std::vector<CEvent> cpend; size_t cpend_i = 0; std::vector<CVoice> cvoices;
+  float cdL[kMaxBlock], cdR[kMaxBlock], csL[kMaxBlock], csR[kMaxBlock];
+  static float wet_of(const std::string& k) {   /* each kind's hall send in the song */
+    static const std::map<std::string, float> w = {{"rex", .25f}, {"sauropod", .4f}, {"ptero", .6f}, {"herd", .3f},
+      {"screech", .35f}, {"bark", .3f}, {"hiss", .3f}, {"chatter", .35f}, {"shout", .3f}, {"boom", .67f}};
+    auto i = w.find(k); return i == w.end() ? .3f : i->second;
+  }
+  void start_creature(const CEvent& e) {
+    CVoice v; v.e = e;
+    v.th.peak(e.throat_f, float(sr), 1.2f, e.throat_g);
+    float fc = 14000.f * powf(1800.f / 14000.f, e.dist); v.lp1.lowpass(fc, float(sr)); v.lp2.lowpass(fc, float(sr));
+    float g = e.gain * (1 - .55f * e.dist), a = (e.pan + 1) * kPi / 4;
+    v.gl = g * cosf(a); v.gr = g * sinf(a);
+    cvoices.push_back(v);
+  }
+  static inline float at(const std::vector<float>& s, double p) {
+    if (p < 0) return 0; size_t i = size_t(p); if (i + 1 >= s.size()) return 0; float f = float(p - double(i));
+    return s[i] + (s[i + 1] - s[i]) * f;
+  }
+  void render_creatures(int n) {
+    memset(cdL, 0, 4 * n); memset(cdR, 0, 4 * n); memset(csL, 0, 4 * n); memset(csR, 0, 4 * n);
+    while (cpend_i < cpend.size() && cpend[cpend_i].start < t + n) start_creature(cpend[cpend_i++]);
+    const double haas = .018 * sr;      /* booms are wide: the right side arrives 18 ms later */
+    for (auto& v : cvoices) {
+      const std::vector<float>& s = *v.e.s;
+      for (int k = 0; k < n; k++) {
+        if (t + k < v.e.start) continue;
+        if (v.e.wide) {                   /* the song put booms in at dry .9 and send .6 of their gain */
+          float l = at(s, v.pos) * v.e.gain, r = at(s, v.pos - haas * v.e.rate) * v.e.gain;
+          cdL[k] += l * .9f; cdR[k] += r * .9f; csL[k] += l * .6f; csR[k] += r * .6f;
+        } else {
+          float x = v.th.tick(at(s, v.pos)); if (v.e.dist > 0) x = v.lp2.tick(v.lp1.tick(x));
+          float l = x * v.gl, r = x * v.gr; cdL[k] += l; cdR[k] += r; csL[k] += l * v.e.send; csR[k] += r * v.e.send;
+        }
+        v.pos += v.e.rate;
+      }
+    }
+    cvoices.erase(std::remove_if(cvoices.begin(), cvoices.end(), [&](const CVoice& v) {
+      return v.pos - (v.e.wide ? haas * v.e.rate : 0) >= double(v.e.s->size()); }), cvoices.end());
+  }
   bool capture = false; long long cap_from = 0; std::vector<float> cap;   /* riser pre-pass */
 
   int part_of(const std::string& n) const { for (int i = 0; i < kNumParts; i++) if (n == kParts[i].name) return i; return -1; }
@@ -206,8 +258,28 @@ struct Engine::Impl {
     }
   }
 
+  std::map<std::string, int> last_var;
+  /* A creature call: midi 60 = as recorded, other notes shift it by semitones; p1 = distance 0 (close) .. 1 (far);
+     p2 = pan -1 .. 1 (left out: a random side). Every call also gets its own small random changes. */
+  void add_creature(const Event& e, int idx) {
+    auto& vars = lib[e.part]; std::mt19937 rng(uint32_t(9157 + idx * 7919));
+    std::uniform_real_distribution<float> u(0, 1);
+    int nv = int(vars.size()), k = int(u(rng) * nv) % nv, last = last_var.count(e.part) ? last_var[e.part] : -1;
+    if (nv > 1 && k == last) k = (k + 1 + int(u(rng) * (nv - 1))) % nv;
+    last_var[e.part] = k;
+    bool wide = e.part == "boom";
+    CEvent c; c.start = (long long)(e.t * sr); c.s = &vars[k];
+    float semi = float(e.midi - 60) + (wide ? 0 : (u(rng) - .5f) * 1.4f);           /* +-0.7 semitone */
+    c.rate = pow(2.0, semi / 12.0) * 48000.0 / sr;
+    c.gain = e.vel; c.dist = std::min(1.f, std::max(0.f, e.p1 < 0 ? 0.f : e.p1));
+    c.pan = e.p2 < -1.5f ? (u(rng) * 1.2f - .6f) : std::min(1.f, std::max(-1.f, e.p2));
+    c.send = wet_of(e.part) + c.dist * 1.0f;
+    c.throat_f = 350 + u(rng) * 900; c.throat_g = powf(10, (u(rng) * 6 - 3) / 20);          /* +-3 dB */
+    c.wide = wide; cpend.push_back(c);
+    len = std::max(len, e.t + double(vars[k].size()) / 48000.0 / pow(2.0, semi / 12.0) + 1);
+  }
   void schedule(const std::vector<Event>& score) {
-    pend.clear(); shots.clear(); len = 0;
+    pend.clear(); shots.clear(); len = 0; cpend.clear(); cvoices.clear(); last_var.clear(); int ncre = 0;
     std::vector<int> notes(kNumParts, 0);
     auto add = [&](int pi, const Event& e) {
       const PartDef& D = kParts[pi];
@@ -240,11 +312,14 @@ struct Engine::Impl {
         s.R = s.L; shots.push_back(std::move(s));
       } else if (e.part == "riser") {
         /* filled in by prepare_risers() */
+      } else if (lib.count(e.part)) {
+        add_creature(e, ncre++);
       } else {
         int pi = part_of(e.part); if (pi >= 0) add(pi, e); else fprintf(stderr, "paleo: unknown part %s\n", e.part.c_str());
       }
     }
     std::stable_sort(pend.begin(), pend.end(), [](const Pending& a, const Pending& b) { return a.start < b.start; });
+    std::stable_sort(cpend.begin(), cpend.end(), [](const CEvent& a, const CEvent& b) { return a.start < b.start; }); cpend_i = 0;
     pend_i = 0;
   }
 
@@ -360,6 +435,10 @@ struct Engine::Impl {
     }
     (void)dr;
     if (capture) return;
+    render_creatures(n);
+    for (int k = 0; k < n; k++) {   /* the creatures, at the level the v5 creature stem had */
+      L[k] += cdL[k] * kCreatureK; R[k] += cdR[k] * kCreatureK; hinL[k] += csL[k] * kCreatureK; hinR[k] += csR[k] * kCreatureK;
+    }
     for (int k = 0; k < n; k++) {   /* external stem: creatures */
       size_t i = size_t(t + k);
       if (i < sdL.size()) { L[k] += sdL[i]; R[k] += sdR[i]; hinL[k] += ssL[i]; hinR[k] += ssR[i]; }
@@ -402,7 +481,7 @@ struct Engine::Impl {
     }
   }
   void reset_state() {
-    t = 0;
+    t = 0; cvoices.clear(); cpend_i = 0;
     for (auto& P : parts) { for (auto& v : P.v) v.active = false; P.act.clear(); }
     /* fresh effects so the pre-pass leaves nothing behind */
     for (auto& P : parts) {
@@ -428,6 +507,7 @@ void Engine::load(const std::vector<Event>& score) {
   for (int i = 0; i < kNumParts; i++) p->parts[i].on = saved[i];
   p->reset_state(); p->pend_i = 0;
 }
+void Engine::add_creature(const std::string& kind, std::vector<float> pcm) { p->lib[kind].push_back(std::move(pcm)); }
 void Engine::set_stem(std::vector<float> a, std::vector<float> b, std::vector<float> c, std::vector<float> d) {
   p->sdL = std::move(a); p->sdR = std::move(b); p->ssL = std::move(c); p->ssR = std::move(d);
 }
@@ -447,7 +527,7 @@ std::vector<Event> read_score(const char* path) {
   while (std::getline(f, line)) {
     if (line.empty() || line[0] == '#') continue;
     std::istringstream s(line); Event e;
-    if (s >> e.t >> e.d >> e.part >> e.midi >> e.vel) { float p; if (s >> p) e.p1 = p; out.push_back(e); }
+    if (s >> e.t >> e.d >> e.part >> e.midi >> e.vel) { float p; if (s >> p) { e.p1 = p; if (s >> p) e.p2 = p; } out.push_back(e); }
   }
   return out;
 }

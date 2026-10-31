@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* paleo-play: play a score through PALEO live on this computer's sound output (WASAPI on Windows).
    paleo-play SCORE [--lead horn|fiddle|choir|blend] [--ostinato spiccato|mouthbow|both] [--threads N]
-              [--period MS] [--gain DB] [--stem FILE] [--null]
+              [--period MS] [--gain DB] [--stem FILE] [--creatures DIR] [--null]
    Prints, once a second: the time, the live voices, and how much of each audio period the engine used. */
 #ifndef NOMINMAX
 #define NOMINMAX /* keep windows.h from defining min and max macros */
 #endif
 #define MINIAUDIO_IMPLEMENTATION
-#define MA_NO_DECODING
 #define MA_NO_ENCODING
 #define MA_NO_GENERATION
 #include "../third_party/miniaudio.h"
 #include "../engine/paleo.h"
+#include "creatures.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -58,7 +58,7 @@ static void callback(ma_device*, void* out, const void*, ma_uint32 frames) {
 
 int main(int argc, char** argv) {
   if (argc < 2) { fprintf(stderr, "usage: paleo-play SCORE [options]\n"); return 2; }
-  paleo::Options o; double period = 10, gain_db = 2.8; const char* stem = nullptr; bool null_out = false;
+  paleo::Options o; double period = 10, gain_db = 2.8; const char* stem = nullptr; bool null_out = false; std::string cdir;
   o.threads = std::max(2, int(std::thread::hardware_concurrency()) / 2);
   for (int i = 2; i < argc; i++) {
     std::string k = argv[i], v = i + 1 < argc ? argv[i + 1] : "";
@@ -70,10 +70,14 @@ int main(int argc, char** argv) {
     else if (k == "--period") period = atof(v.c_str());
     else if (k == "--gain") gain_db = atof(v.c_str());
     else if (k == "--stem") stem = argv[i];
+    else if (k == "--creatures") cdir = v;
   }
   g_gain = float(pow(10, gain_db / 20));
   printf("PALEO live player. Preparing the score (risers are rendered ahead)...\n");
-  paleo::Engine e(o); g_engine = &e; e.load(paleo::read_score(argv[1])); g_end = e.length() + 8;
+  paleo::Engine e(o); g_engine = &e;
+  int nc = paleo_load_creatures(e, cdir, argv[1]);
+  printf("Creature library: %d calls%s\n", nc, nc ? "" : " (none found; creature cues stay silent)");
+  e.load(paleo::read_score(argv[1])); g_end = e.length() + 8;
   if (stem) {
     FILE* f = fopen(stem, "rb");
     if (f) {
