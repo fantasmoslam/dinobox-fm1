@@ -2,6 +2,9 @@
 /* paleo-render: play a score through PALEO offline and write a 32-bit float stereo WAV.
    paleo-render SCORE OUT.wav [--lead horn|fiddle|choir|blend] [--ostinato spiccato|mouthbow|both]
                 [--threads N] [--seconds S] [--stem FILE] [--creatures DIR] (FILE: float32, 4 interleaved channels: dry L R, hall send L R) */
+#ifndef NOMINMAX
+#define NOMINMAX /* keep windows.h from defining min and max macros */
+#endif
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_DEVICE_IO
 #define MA_NO_ENCODING
