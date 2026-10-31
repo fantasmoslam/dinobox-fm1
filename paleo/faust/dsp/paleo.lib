@@ -22,3 +22,6 @@ with { fq(k) = pick(v,k,fa,fe,fi_,fo,fu)*sz : max(60) : min(9000); };
 modal(fr,R,T,G,x) = x <: par(i,ba.count(R), pm.modeFilter(fr*ba.take(i+1,R), ba.take(i+1,T), ba.take(i+1,G))) :> _;
 // a soft mallet / hand strike: a short raised-cosine thump plus a little dark noise
 strike(ms,dark) = (en.ar(ms*0.0005, ms*0.0005, trig) + no.noise*en.ar(0.0002,ms*0.001,trig)*0.3) : fi.lowpass(1,dark);
+// plucked string (Karplus-Strong): x excites a delay loop tuned to fr (the loop and its filter delay are taken off);
+// br 0.5..0.95 brightness, fb loop gain (decay)
+kstring(fr,br,fb,x) = x : (+ ~ (de.fdelay(8192, ma.SR/fr - 2 + br) : (_ <: _*br, _'*(1-br) :> _) : *(fb)));

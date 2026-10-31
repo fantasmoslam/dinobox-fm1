@@ -23,6 +23,7 @@ dsp* make_taiko(); dsp* make_bigdrum(); dsp* make_logdrum(); dsp* make_rattle();
 dsp* make_mouthbow(); dsp* make_horn(); dsp* make_pipe(); dsp* make_fiddle(); dsp* make_choir(); dsp* make_reverb();
 dsp* make_boneflute(); dsp* make_panpipes(); dsp* make_bowedbone(); dsp* make_slitdrum(); dsp* make_claypot();
 dsp* make_framedrum(); dsp* make_rasp(); dsp* make_bullroarer();
+dsp* make_cbrecorder(); dsp* make_fujara(); dsp* make_uprightbass(); dsp* make_harmonium(); dsp* make_bugle(); dsp* make_guitar();
 
 namespace paleo {
 namespace {
@@ -63,6 +64,13 @@ const PartDef kParts[] = {
   {"framedrum",make_framedrum,Ctl::struck, 32, 1, 0, 1.2f, {0,     40,   0,    300, .3f,  0,    0,   .348f,     9,    -.35f, 0,   0,   0,    0,  .15f, .2f, 1}},
   {"rasp",     make_rasp,     Ctl::held,   16, 1, 0, .4f,  {0,     120,  6500, 0,   0,    0,    0,   .661f,     14,   .4f,   0,   0,   0,    0,  0,    .2f, 1}},
   {"bullroarer",make_bullroarer,Ctl::held, 4,  1, 0, 3.0f, {0,     50,   3000, 0,   0,    0,    0,   1.0f,      21,   0,     0,   0,   0,    1,  .4f,  0,   1}},
+  /* pack 2: the contrabass recorder and fujara, and the expedition's instruments (it is the 1900s) */
+  {"cbrecorder",make_cbrecorder,Ctl::held, 12, 1, 0, .8f,  {0,     40,   6000, 0,   0,    0,    0,   .387f,     13,   .25f,  .375f,.2f, .1f,  .3f,.35f, 0,   1}},
+  {"fujara",   make_fujara,   Ctl::held,   12, 1, 0, .9f,  {0,     150,  10000,0,   0,    0,    0,   .568f,     15,   -.25f, .375f,.25f,.12f, .3f,.4f,  0,   1}},
+  {"upright",  make_uprightbass,Ctl::held, 16, 1, 0, 2.5f, {0,     30,   5000, 0,   0,    0,    0,   .21f,      -1,   0,     0,   0,   0,    .3f,.2f,  .2f, 1}},
+  {"harmonium",make_harmonium,Ctl::held,   24, 1, 0, .5f,  {0,     60,   7000, 0,   0,    0,    0,   .932f,     18,   -.2f,  0,   0,   0,    .5f,.3f,  .2f, 1}},
+  {"bugle",    make_bugle,    Ctl::held,   8,  1, 0, .7f,  {0,     100,  8000, 0,   0,    0,    0,   1.8f,      11,   .3f,   .5f, .25f,.15f, .2f,.45f, 0,   1}},
+  {"guitar",   make_guitar,   Ctl::held,   24, 1, 0, 3.0f, {0,     60,   9000, 0,   0,    0,    0,   .317f,     10,   .35f,  0,   0,   0,    .3f,.25f, .2f, 1}},
 };
 const int kNumParts = int(sizeof kParts / sizeof kParts[0]);
 const float kDuckRef = 1.07775f, kGlueThr = 1.36736f, kOutGain = 1 / 2.36579f;

@@ -34,11 +34,12 @@ jobs:
         shell: cmd
         run: |
           mkdir build\paleo
-          set SRC=paleo\engine\paleo.cpp paleo\faust\gen\taiko.cpp paleo\faust\gen\bigdrum.cpp paleo\faust\gen\logdrum.cpp paleo\faust\gen\rattle.cpp paleo\faust\gen\stone.cpp paleo\faust\gen\mouthbow.cpp paleo\faust\gen\horn.cpp paleo\faust\gen\pipe.cpp paleo\faust\gen\fiddle.cpp paleo\faust\gen\choir.cpp paleo\faust\gen\reverb.cpp paleo\faust\gen\boneflute.cpp paleo\faust\gen\panpipes.cpp paleo\faust\gen\bowedbone.cpp paleo\faust\gen\slitdrum.cpp paleo\faust\gen\claypot.cpp paleo\faust\gen\framedrum.cpp paleo\faust\gen\rasp.cpp paleo\faust\gen\bullroarer.cpp
+          set SRC=paleo\engine\paleo.cpp paleo\faust\gen\taiko.cpp paleo\faust\gen\bigdrum.cpp paleo\faust\gen\logdrum.cpp paleo\faust\gen\rattle.cpp paleo\faust\gen\stone.cpp paleo\faust\gen\mouthbow.cpp paleo\faust\gen\horn.cpp paleo\faust\gen\pipe.cpp paleo\faust\gen\fiddle.cpp paleo\faust\gen\choir.cpp paleo\faust\gen\reverb.cpp paleo\faust\gen\boneflute.cpp paleo\faust\gen\panpipes.cpp paleo\faust\gen\bowedbone.cpp paleo\faust\gen\slitdrum.cpp paleo\faust\gen\claypot.cpp paleo\faust\gen\framedrum.cpp paleo\faust\gen\rasp.cpp paleo\faust\gen\bullroarer.cpp paleo\faust\gen\cbrecorder.cpp paleo\faust\gen\fujara.cpp paleo\faust\gen\uprightbass.cpp paleo\faust\gen\harmonium.cpp paleo\faust\gen\bugle.cpp paleo\faust\gen\guitar.cpp
           cl /nologo /O2 /std:c++17 /EHsc /w /arch:AVX2 /Ipaleo /Fe:build\paleo\paleo-play.exe paleo\tools\play.cpp %SRC% || exit /b 1
           cl /nologo /O2 /std:c++17 /EHsc /w /arch:AVX2 /Ipaleo /Fe:build\paleo\paleo-render.exe paleo\tools\render.cpp %SRC% || exit /b 1
           copy paleo\scores\stampede.txt build\paleo\
           copy paleo\scores\kit-demo.txt build\paleo\
+          copy paleo\scores\kit-demo2.txt build\paleo\
       - name: Smoke test
         run: build\paleo\paleo-render.exe paleo\scores\stampede.txt build\paleo\test.wav --seconds 20
       - uses: actions/upload-artifact@v4
@@ -49,4 +50,5 @@ jobs:
             build/paleo/paleo-render.exe
             build/paleo/stampede.txt
             build/paleo/kit-demo.txt
+            build/paleo/kit-demo2.txt
           retention-days: 30

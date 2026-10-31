@@ -10,8 +10,10 @@
 namespace paleo {
 /* One score line: time and duration in seconds, part name, MIDI note, velocity 0..1.
    Parts: taiko bigdrum logdrum rattle stone mouthbow horn braam pipe lead ostinato, and
-   boneflute panpipes bowedbone slitdrum claypot framedrum rasp bullroarer.
-   An optional 6th column sets the voice's p1 (frame drum: 0 centre .. 1 rim).
+   boneflute panpipes bowedbone slitdrum claypot framedrum rasp bullroarer,
+   cbrecorder fujara upright harmonium bugle guitar.
+   An optional 6th column sets the voice's p1 (frame drum: 0 centre .. 1 rim; upright: 0 plucked, 1 bowed;
+   fujara: 1 opens the note with the rozfuk).
    Directives use the same shape: "riser" and "subdrop" at a time (vel = level), "fade lead" as
    `t tau fade 0 0` (the lead dies away from t with time constant tau), "tail" from t (lead into the long tail). */
 struct Event { double t = 0, d = 0; std::string part; int midi = 0; float vel = 0; float p1 = -1; /* optional 6th column */ };
